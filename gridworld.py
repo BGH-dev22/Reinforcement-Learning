@@ -65,7 +65,7 @@ class MyGridWorld(gym.Env):
 
         # Dessine les goals
         for gx, gy in self.goals:
-            self.ax.scatter(gy, gx, marker='*', s=300, c='gold', label='Goal')
+            self.ax.scatter(gy, gx, marker='*', s=300, c='red', label='Goal')
 
         # Dessine les obstacles
         for ox, oy in self.obstacles:
@@ -73,7 +73,7 @@ class MyGridWorld(gym.Env):
 
         # Dessine l’agent
         sx, sy = self.state
-        self.ax.scatter(sy, sx, marker='o', s=200, c='red', label='Agent')
+        self.ax.scatter(sy, sx, marker='o', s=200, c='green', label='Agent')
 
         # Évite doublons dans la légende
         handles, labels = self.ax.get_legend_handles_labels()

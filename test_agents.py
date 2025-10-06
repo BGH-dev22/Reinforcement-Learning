@@ -12,6 +12,8 @@ episodes_per_size = 50  # Nombre d'épisodes par taille
 start = (0, 0)
 obstacles = [(1, 1), (2, 3)]
 
+
+
 # --- Stockage des résultats ---
 all_cumulative_rewards = []  # Pour chaque taille: liste des retours cumulés par épisode
 mean_rewards = []  # Retour moyen par taille
@@ -27,12 +29,17 @@ for size in sizes:
     # Création de l'environnement adapté à la taille
     goals = [(size-1, size-1)]  # Goal unique dans le coin opposé
     env = MyGridWorld(size=size, start=start, goals=goals, obstacles=obstacles)
-    
+    env.render()  # méthode de ton environnement pour afficher la grille
+    plt.title(f'Grille {size}x{size} avec obstacles et goals')
+    plt.show()
     # Initialisation de l'agent
     q_agent = QLearningAgent(env)
     
     # Stockage des récompenses pour cette taille
     cumulative_rewards = []
+# --- Affichage du GridWorld pour cette taille ---
+  
+
     
     # Entraînement
     for ep in range(episodes_per_size):
