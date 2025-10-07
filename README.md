@@ -39,12 +39,12 @@ Copier le code
 
 ## ⚙️ Installation
 
-### 1️⃣ Créer et activer un environnement virtuel
+### 1. Créer et activer un environnement virtuel
 ```bash
 python -m venv venv
 source venv/bin/activate       # sous Linux/Mac
 venv\Scripts\activate          # sous Windows
-2️⃣ Installer les dépendances requises
+2. Installer les dépendances requises
 bash
 Copier le code
 pip install numpy matplotlib seaborn
@@ -119,7 +119,7 @@ L’agent suit la mise à jour suivante :
 𝑠
 )
 w←w+αδϕ(s)
-Fonction d’approximation : linéaire avec features
+Fonction d’approximation : linéaire avec features :
 [x, y, x², y², x·y, prox_goal, bias]
 
 Politique : ε-greedy (avec décroissance exponentielle de ε)
@@ -135,11 +135,7 @@ But : (5,5)
 
 Obstacles : (1,1), (2,3), (3,3)
 
-Récompenses :
-
-Positive à l’arrivée
-
-Négative pour les obstacles ou les sorties de grille
+Récompense : positive à l’arrivée, négative pour les obstacles ou les sorties de grille.
 
 📈 Exemple de sortie console
 yaml
@@ -156,13 +152,13 @@ Copier le code
    Performance finale: 0.85
 Les résultats sont automatiquement enregistrés et affichés dans figures_td0/.
 
-🎓 Objectif pédagogique
+🧠 Objectif pédagogique
 Ce projet a pour but de :
 
-Illustrer le fonctionnement de TD(0) dans un environnement discret.
+Illustrer le fonctionnement de TD(0) dans un environnement discret ;
 
-Montrer comment une fonction de valeur peut être apprise par approximation linéaire.
+Montrer comment une fonction de valeur peut être apprise par approximation linéaire ;
 
-Comprendre l’impact du taux d’apprentissage, du facteur de discount et de l’exploration sur la convergence.
+Comprendre l’impact du taux d’apprentissage, du facteur de discount et de l’exploration sur la convergence ;
 
-Fournir des visualisations claires pour interpréter les résultats.
+Fournir des visualisations claires pour interpréter les résultats.  
