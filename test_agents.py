@@ -2,7 +2,8 @@ from gridworld import MyGridWorld
 from agents.q_learning import QLearningAgent
 import numpy as np
 import matplotlib.pyplot as plt
-import imageio
+import imageio.v2 as imageio  # Correction: utiliser imageio.v2
+from PIL import Image  # Ajout pour redimensionner les images
 import os
 import csv
 
@@ -141,19 +142,22 @@ for idx, size in enumerate(sizes):
     std_rewards.append(np.std(cumulative_rewards[-10:]))
 
     # --- Graphique individuel ---
-    plt.figure(figsize=(10, 6))
-    plt.plot(cumulative_rewards, marker='o', markersize=4, alpha=0.7, label=f'{size}x{size}')
-    plt.axhline(y=mean_rewards[-1], color='r', linestyle='--', 
+    fig, ax = plt.subplots(figsize=(10, 6))  # Taille fixe pour standardisation
+    ax.plot(cumulative_rewards, marker='o', markersize=4, alpha=0.7, label=f'{size}x{size}')
+    ax.axhline(y=mean_rewards[-1], color='r', linestyle='--', 
                 label=f'Moyenne finale: {mean_rewards[-1]:.2f}')
-    plt.title(f'Grille {size}x{size} - {len(obstacles)} obstacles, {len(goals)} goal(s)', 
+    ax.set_title(f'Grille {size}x{size} - {len(obstacles)} obstacles, {len(goals)} goal(s)', 
               fontsize=13, fontweight='bold')
-    plt.xlabel('Épisode', fontsize=11)
-    plt.ylabel('Retour cumulé', fontsize=11)
-    plt.grid(True, alpha=0.3)
-    plt.legend()
+    ax.set_xlabel('Épisode', fontsize=11)
+    ax.set_ylabel('Retour cumulé', fontsize=11)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    # Standardisation des marges
+    plt.tight_layout(pad=2.0)  # Padding fixe
     
     image_file = f"figures_dynamic/grid_{size}x{size}.png"
-    plt.savefig(image_file, dpi=150, bbox_inches='tight')
+    plt.savefig(image_file, dpi=100, bbox_inches='tight')  # DPI fixe
     plt.close()
     image_files.append(image_file)
     
@@ -172,9 +176,18 @@ with open(csv_file, "w", newline="") as f:
 
 print(f"\n✅ Résultats sauvegardés dans '{csv_file}'")
 
-# --- Génération du GIF ---
-images = [imageio.imread(img) for img in image_files]
-imageio.mimsave("performance_dynamic.gif", images, duration=1.5)
+# --- Génération du GIF CORRIGÉ ---
+# Redimensionner toutes les images à la même taille
+target_size = (800, 600)  # Largeur x Hauteur
+resized_images = []
+
+for img_path in image_files:
+    img = Image.open(img_path)
+    img = img.resize(target_size, Image.Resampling.LANCZOS)
+    resized_images.append(np.array(img))
+
+# Créer le GIF avec les images redimensionnées
+imageio.mimsave("performance_dynamic.gif", resized_images, duration=1.5)
 print("✅ GIF 'performance_dynamic.gif' créé!")
 
 # --- FIGURE GLOBALE COMPLÈTE ---
