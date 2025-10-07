@@ -84,48 +84,6 @@ td0_rewards.npy	Historique complet des récompenses (format NumPy)
 td0_rewards.txt	Résumé textuel avec statistiques
 td0_weights.npy	Poids finaux de l’agent (format NumPy)
 
-🧩 Détails de l’implémentation
-🔸 Agent TD(0)
-L’agent suit la mise à jour suivante :
-
-𝛿
-=
-𝑟
-+
-𝛾
-𝑉
-(
-𝑠
-′
-)
-−
-𝑉
-(
-𝑠
-)
-δ=r+γV(s 
-′
- )−V(s)
-𝑤
-←
-𝑤
-+
-𝛼
- 
-𝛿
- 
-𝜙
-(
-𝑠
-)
-w←w+αδϕ(s)
-Fonction d’approximation : linéaire avec features :
-[x, y, x², y², x·y, prox_goal, bias]
-
-Politique : ε-greedy (avec décroissance exponentielle de ε)
-
-Apprentissage : mise à jour incrémentale à chaque étape
-
 🔸 Environnement GridWorld
 Taille : 6x6
 
