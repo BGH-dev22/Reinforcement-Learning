@@ -1,185 +1,278 @@
 from gridworld import MyGridWorld
-from agents.q_learning import QLearningAgent, train_q_learning_agent
+from agents.q_learning import QLearningAgent
 import numpy as np
 import matplotlib.pyplot as plt
+import imageio
+import os
+import csv
 
-print("="*70)
-print("🎯 TEST SIMPLE: Agent Q-Learning")
-print("="*70)
-
-# Créer l'environnement
-size = 5
+# --- Paramètres ---
+sizes = [3, 4, 5, 6, 7, 8, 9, 10]
+episodes_per_size = 50
 start = (0, 0)
-goals = [(4, 4)]
-obstacles = [(1, 1), (2, 3)]
 
-env = MyGridWorld(size=size, start=start, goals=goals, obstacles=obstacles)
+# === PARAMÈTRES DYNAMIQUES À TESTER ===
+# Densité d'obstacles (pourcentage de la grille)
+OBSTACLE_DENSITY = 0.15  # 15% de la grille
+# Nombre de goals
+NUM_GOALS = 1  # 1, 2, 3, ou 4
+# Seed pour reproductibilité
+RANDOM_SEED = 42
 
-print(f"\n📋 Configuration de l'environnement:")
-print(f"   - Taille: {size}x{size}")
-print(f"   - Départ: {start}")
-print(f"   - Objectif: {goals}")
-print(f"   - Obstacles: {obstacles}")
-
-# Créer l'agent Q-Learning
-print("\n" + "="*70)
-agent = QLearningAgent(
-    env,
-    learning_rate=0.1,
-    discount_factor=0.99,
-    exploration_rate=1.0,
-    exploration_decay=0.995,
-    exploration_min=0.01
-)
-
-# Entraînement
-print("\n" + "="*70)
-print("🏃 ENTRAÎNEMENT")
-print("="*70)
-
-episodes = 100
-rewards_history, steps_history = train_q_learning_agent(env, agent, episodes, verbose=True)
-
-print("\n✅ Entraînement terminé!")
-print(f"   Performance finale (10 derniers): {np.mean(rewards_history[-10:]):.2f}")
-print(f"   Pas moyens (10 derniers): {np.mean(steps_history[-10:]):.1f}")
-
-# Statistiques de l'agent
-agent.print_statistics()
-
-# Test de la politique apprise
-print("\n" + "="*70)
-print("🎮 TEST DE LA POLITIQUE APPRISE")
-print("="*70)
-
-# Désactiver l'exploration pour tester
-agent.exploration_rate = 0.0
-
-test_episodes = 5
-print(f"\nTest sur {test_episodes} épisodes (ε=0, greedy policy):\n")
-
-for ep in range(test_episodes):
-    state, _ = env.reset()
-    done = False
-    total_reward = 0
-    steps = 0
-    path = [tuple(state)]
+# --- Fonctions de génération dynamique ---
+def generate_dynamic_obstacles(size, density=0.15, seed=None):
+    """
+    Génère des obstacles proportionnels à la taille de la grille.
     
-    while not done and steps < 50:  # Limite de sécurité
-        action = agent.choose_action(tuple(state))
-        next_state, reward, terminated, truncated, _ = env.step(action)
+    Args:
+        size: Taille de la grille (size x size)
+        density: Pourcentage de cellules avec obstacles (0.15 = 15%)
+        seed: Graine aléatoire pour reproductibilité
+    
+    Returns:
+        Liste de tuples (x, y) des obstacles
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    num_obstacles = max(1, int(size * size * density))
+    obstacles = []
+    max_attempts = size * size * 2
+    attempts = 0
+    
+    while len(obstacles) < num_obstacles and attempts < max_attempts:
+        x = np.random.randint(0, size)
+        y = np.random.randint(0, size)
         
-        state = next_state
-        total_reward += reward
-        steps += 1
-        path.append(tuple(state))
-        done = terminated or truncated
+        # Éviter départ et goal principal
+        if (x, y) != (0, 0) and (x, y) != (size-1, size-1):
+            if (x, y) not in obstacles:
+                obstacles.append((x, y))
+        attempts += 1
     
-    print(f"  Episode {ep+1}: Reward={total_reward:.2f}, Steps={steps}, "
-          f"Success={'✅' if done and reward > 0 else '❌'}")
-    print(f"    Chemin: {' → '.join([str(p) for p in path[:10]])}" + 
-          ("..." if len(path) > 10 else ""))
+    return obstacles
 
-# Visualisation
-print("\n" + "="*70)
-print("📊 VISUALISATION")
-print("="*70)
+def generate_dynamic_goals(size, num_goals=1):
+    """
+    Génère des goals en fonction de la taille de la grille.
+    
+    Args:
+        size: Taille de la grille
+        num_goals: Nombre de goals (1 à 4)
+    
+    Returns:
+        Liste de tuples (x, y) des goals
+    """
+    if num_goals == 1:
+        return [(size-1, size-1)]
+    
+    # Positions stratégiques pour plusieurs goals
+    all_positions = [
+        (size-1, size-1),      # Coin bas-droite
+        (0, size-1),            # Coin haut-droite
+        (size-1, 0),            # Coin bas-gauche
+        (size//2, size-1),      # Milieu-droite
+    ]
+    
+    return all_positions[:min(num_goals, len(all_positions))]
 
-fig, axes = plt.subplots(2, 2, figsize=(14, 12))
+# --- Stockage des résultats ---
+all_cumulative_rewards = []
+mean_rewards = []
+std_rewards = []
+num_obstacles_per_size = []
+image_files = []
 
-# 1. Courbe d'apprentissage
-ax1 = axes[0, 0]
-ax1.plot(rewards_history, alpha=0.5, linewidth=0.8)
-window = 10
-smoothed = np.convolve(rewards_history, np.ones(window)/window, mode='valid')
-ax1.plot(range(len(smoothed)), smoothed, 'r-', linewidth=2, label=f'Moyenne mobile ({window})')
-ax1.set_title('Courbe d\'apprentissage', fontsize=13, fontweight='bold')
-ax1.set_xlabel('Épisode')
-ax1.set_ylabel('Retour cumulé')
-ax1.legend()
+# --- Création du dossier ---
+os.makedirs("figures_dynamic", exist_ok=True)
+
+print(f"\n{'='*60}")
+print(f"CONFIGURATION:")
+print(f"  - Densité d'obstacles: {OBSTACLE_DENSITY*100}%")
+print(f"  - Nombre de goals: {NUM_GOALS}")
+print(f"  - Seed aléatoire: {RANDOM_SEED}")
+print(f"{'='*60}")
+
+# --- Entraînement pour différentes tailles ---
+for idx, size in enumerate(sizes):
+    print(f"\n=== Grille {size}x{size} ({idx+1}/{len(sizes)}) ===")
+    
+    # Génération dynamique
+    goals = generate_dynamic_goals(size, num_goals=NUM_GOALS)
+    obstacles = generate_dynamic_obstacles(size, density=OBSTACLE_DENSITY, seed=RANDOM_SEED + idx)
+    
+    num_obstacles_per_size.append(len(obstacles))
+    
+    print(f"  Goals ({len(goals)}): {goals}")
+    print(f"  Obstacles ({len(obstacles)}): {obstacles[:3]}{'...' if len(obstacles) > 3 else ''}")
+    
+    # Création de l'environnement
+    env = MyGridWorld(size=size, start=start, goals=goals, obstacles=obstacles)
+    
+    # Initialisation de l'agent
+    q_agent = QLearningAgent(env)
+    
+    # Stockage des récompenses
+    cumulative_rewards = []
+    
+    # Entraînement
+    for ep in range(episodes_per_size):
+        state, _ = env.reset()
+        done = False
+        total_reward = 0
+        
+        while not done:
+            action = q_agent.choose_action(tuple(state))
+            next_state, reward, terminated, truncated, _ = env.step(action)
+            q_agent.update(tuple(state), action, reward, tuple(next_state))
+            state = next_state
+            total_reward += reward
+            done = terminated or truncated
+        
+        cumulative_rewards.append(total_reward)
+        
+        if (ep + 1) % 10 == 0:
+            avg_last_10 = np.mean(cumulative_rewards[-10:])
+            print(f"  Épisode {ep+1}/{episodes_per_size} - Récompense: {total_reward:.2f} (Moy 10: {avg_last_10:.2f})")
+
+    # Sauvegarde des résultats
+    all_cumulative_rewards.append(cumulative_rewards)
+    mean_rewards.append(np.mean(cumulative_rewards[-10:]))
+    std_rewards.append(np.std(cumulative_rewards[-10:]))
+
+    # --- Graphique individuel ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(cumulative_rewards, marker='o', markersize=4, alpha=0.7, label=f'{size}x{size}')
+    plt.axhline(y=mean_rewards[-1], color='r', linestyle='--', 
+                label=f'Moyenne finale: {mean_rewards[-1]:.2f}')
+    plt.title(f'Grille {size}x{size} - {len(obstacles)} obstacles, {len(goals)} goal(s)', 
+              fontsize=13, fontweight='bold')
+    plt.xlabel('Épisode', fontsize=11)
+    plt.ylabel('Retour cumulé', fontsize=11)
+    plt.grid(True, alpha=0.3)
+    plt.legend()
+    
+    image_file = f"figures_dynamic/grid_{size}x{size}.png"
+    plt.savefig(image_file, dpi=150, bbox_inches='tight')
+    plt.close()
+    image_files.append(image_file)
+    
+    env.close()
+
+# --- Sauvegarde CSV ---
+csv_file = "cumulative_rewards_dynamic.csv"
+with open(csv_file, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["Taille", "Obstacles", "Goals"] + [f"Ep{i+1}" for i in range(episodes_per_size)])
+    
+    for i, size in enumerate(sizes):
+        row = [f"{size}x{size}", num_obstacles_per_size[i], NUM_GOALS]
+        row.extend(all_cumulative_rewards[i])
+        writer.writerow(row)
+
+print(f"\n✅ Résultats sauvegardés dans '{csv_file}'")
+
+# --- Génération du GIF ---
+images = [imageio.imread(img) for img in image_files]
+imageio.mimsave("performance_dynamic.gif", images, duration=1.5)
+print("✅ GIF 'performance_dynamic.gif' créé!")
+
+# --- FIGURE GLOBALE COMPLÈTE ---
+fig = plt.figure(figsize=(20, 12))
+
+# 1. Évolution des courbes d'apprentissage
+ax1 = plt.subplot(2, 3, 1)
+for i, size in enumerate(sizes):
+    ax1.plot(all_cumulative_rewards[i], label=f'{size}x{size}', alpha=0.8, linewidth=1.5)
+ax1.set_title('Évolution du retour cumulé par épisode', fontsize=13, fontweight='bold')
+ax1.set_xlabel('Épisode', fontsize=11)
+ax1.set_ylabel('Retour cumulé', fontsize=11)
+ax1.legend(loc='upper left', bbox_to_anchor=(1, 1), fontsize=9)
 ax1.grid(True, alpha=0.3)
 
-# 2. Nombre de pas
-ax2 = axes[0, 1]
-ax2.plot(steps_history, alpha=0.5, linewidth=0.8, color='green')
-smoothed_steps = np.convolve(steps_history, np.ones(window)/window, mode='valid')
-ax2.plot(range(len(smoothed_steps)), smoothed_steps, 'darkgreen', linewidth=2)
-ax2.set_title('Nombre de pas par épisode', fontsize=13, fontweight='bold')
-ax2.set_xlabel('Épisode')
-ax2.set_ylabel('Nombre de pas')
+# 2. Performance moyenne vs taille
+ax2 = plt.subplot(2, 3, 2)
+ax2.errorbar(sizes, mean_rewards, yerr=std_rewards, fmt='o-', 
+             color='red', markersize=8, capsize=5, linewidth=2)
+ax2.set_title('Performance moyenne vs Taille de grille', fontsize=13, fontweight='bold')
+ax2.set_xlabel('Taille de la grille', fontsize=11)
+ax2.set_ylabel('Retour moyen ± écart-type', fontsize=11)
 ax2.grid(True, alpha=0.3)
 
-# 3. Grille des valeurs V(s)
-ax3 = axes[1, 0]
-value_grid = agent.get_value_grid()
-im = ax3.imshow(value_grid, cmap='viridis', origin='upper')
-ax3.set_title('Fonction de valeur V(s) = max_a Q(s,a)', fontsize=13, fontweight='bold')
-ax3.set_xlabel('y')
-ax3.set_ylabel('x')
+# 3. Nombre d'obstacles vs taille
+ax3 = plt.subplot(2, 3, 3)
+ax3.plot(sizes, num_obstacles_per_size, 'o-', color='orange', markersize=8, linewidth=2)
+ax3.set_title(f'Nombre d\'obstacles (densité: {OBSTACLE_DENSITY*100}%)', 
+              fontsize=13, fontweight='bold')
+ax3.set_xlabel('Taille de la grille', fontsize=11)
+ax3.set_ylabel('Nombre d\'obstacles', fontsize=11)
+ax3.grid(True, alpha=0.3)
 
-# Marquer start, goal, obstacles
-ax3.plot(start[1], start[0], 'g*', markersize=20, label='Start')
-for goal in goals:
-    ax3.plot(goal[1], goal[0], 'r*', markersize=20, label='Goal')
-for obs in obstacles:
-    ax3.plot(obs[1], obs[0], 'kx', markersize=15, markeredgewidth=3)
+# 4. Courbes normalisées
+ax4 = plt.subplot(2, 3, 4)
+for i, size in enumerate(sizes):
+    rewards = np.array(all_cumulative_rewards[i])
+    if np.max(rewards) != np.min(rewards):
+        normalized = (rewards - np.min(rewards)) / (np.max(rewards) - np.min(rewards))
+    else:
+        normalized = np.zeros_like(rewards)
+    ax4.plot(normalized, label=f'{size}x{size}', alpha=0.8, linewidth=1.5)
+ax4.set_title('Courbes normalisées (tendances)', fontsize=13, fontweight='bold')
+ax4.set_xlabel('Épisode', fontsize=11)
+ax4.set_ylabel('Retour normalisé [0-1]', fontsize=11)
+ax4.legend(loc='upper left', bbox_to_anchor=(1, 1), fontsize=9)
+ax4.grid(True, alpha=0.3)
 
-plt.colorbar(im, ax=ax3, label='Valeur')
+# 5. Bar chart des performances finales
+ax5 = plt.subplot(2, 3, 5)
+bars = ax5.bar(sizes, mean_rewards, color='skyblue', alpha=0.7, edgecolor='black')
+ax5.errorbar(sizes, mean_rewards, yerr=std_rewards, fmt='none', 
+             color='black', capsize=3, linewidth=1.5)
+ax5.set_title('Performance finale par taille', fontsize=13, fontweight='bold')
+ax5.set_xlabel('Taille de la grille', fontsize=11)
+ax5.set_ylabel('Retour moyen (10 derniers épisodes)', fontsize=11)
+ax5.grid(True, axis='y', alpha=0.3)
 
-# 4. Politique optimale (flèches)
-ax4 = axes[1, 1]
-ax4.imshow(value_grid, cmap='viridis', origin='upper', alpha=0.3)
+# Ajouter valeurs sur les barres
+for i, (bar, val) in enumerate(zip(bars, mean_rewards)):
+    ax5.text(bar.get_x() + bar.get_width()/2, val + std_rewards[i], 
+             f'{val:.1f}', ha='center', va='bottom', fontsize=9)
 
-# Directions des flèches: 0=haut, 1=bas, 2=gauche, 3=droite
-arrow_map = {
-    0: (0, -0.3),   # Haut
-    1: (0, 0.3),    # Bas
-    2: (-0.3, 0),   # Gauche
-    3: (0.3, 0)     # Droite
-}
+# 6. Analyse de convergence (moyenne mobile)
+ax6 = plt.subplot(2, 3, 6)
+window = 5
+for i, size in enumerate(sizes):
+    rewards = np.array(all_cumulative_rewards[i])
+    moving_avg = np.convolve(rewards, np.ones(window)/window, mode='valid')
+    ax6.plot(range(window-1, len(rewards)), moving_avg, 
+             label=f'{size}x{size}', alpha=0.8, linewidth=1.5)
+ax6.set_title(f'Moyenne mobile (fenêtre={window})', fontsize=13, fontweight='bold')
+ax6.set_xlabel('Épisode', fontsize=11)
+ax6.set_ylabel('Retour cumulé (lissé)', fontsize=11)
+ax6.legend(loc='upper left', bbox_to_anchor=(1, 1), fontsize=9)
+ax6.grid(True, alpha=0.3)
 
-policy_grid = agent.get_policy_grid()
+# Titre global
+fig.suptitle(f'Analyse Q-Learning - Obstacles dynamiques ({OBSTACLE_DENSITY*100}%) - {NUM_GOALS} goal(s)', 
+             fontsize=16, fontweight='bold', y=0.995)
 
-for x in range(size):
-    for y in range(size):
-        if (x, y) not in obstacles and (x, y) not in goals:
-            action = policy_grid[x, y]
-            dx, dy = arrow_map[action]
-            ax4.arrow(y, x, dy, dx, head_width=0.2, head_length=0.15,
-                     fc='white', ec='black', linewidth=1.5)
-
-ax4.set_title('Politique optimale π(s)', fontsize=13, fontweight='bold')
-ax4.set_xlabel('y')
-ax4.set_ylabel('x')
-ax4.plot(start[1], start[0], 'g*', markersize=20)
-for goal in goals:
-    ax4.plot(goal[1], goal[0], 'r*', markersize=20)
-for obs in obstacles:
-    ax4.plot(obs[1], obs[0], 'kx', markersize=15, markeredgewidth=3)
-
-plt.suptitle('Analyse de l\'agent Q-Learning', fontsize=15, fontweight='bold')
 plt.tight_layout()
-plt.savefig('q_learning_test_results.png', dpi=300, bbox_inches='tight')
-plt.show()
+plt.savefig("analyse_complete_dynamic.png", dpi=300, bbox_inches='tight')
+print("✅ Figure complète sauvegardée: 'analyse_complete_dynamic.png'")
+plt.show(block=True)
 
-print("\n✅ Visualisation sauvegardée dans 'q_learning_test_results.png'")
+# --- Résultats finaux ---
+print(f"\n{'='*60}")
+print("RÉSULTATS FINAUX:")
+print(f"{'='*60}")
+print(f"{'Taille':<10} {'Obstacles':<12} {'Retour Moyen':<15} {'Écart-type':<12}")
+print(f"{'-'*60}")
+for i, size in enumerate(sizes):
+    print(f"{size}x{size:<7} {num_obstacles_per_size[i]:<12} "
+          f"{mean_rewards[i]:<15.2f} {std_rewards[i]:<12.2f}")
+print(f"{'='*60}")
 
-# Sauvegarder la Q-table
-agent.save_q_table('q_learning_agent.pkl')
-
-# Test de chargement
-print("\n🔄 Test de sauvegarde/chargement...")
-agent2 = QLearningAgent(env, learning_rate=0.1)
-agent2.load_q_table('q_learning_agent.pkl')
-
-# Vérifier que les Q-values sont identiques
-test_state = (1, 0)
-print(f"\nVérification: Q-values pour l'état {test_state}")
-print(f"  Agent original: {agent.get_all_q_values(test_state)}")
-print(f"  Agent chargé:   {agent2.get_all_q_values(test_state)}")
-
-env.close()
-
-print("\n" + "="*70)
-print("✅ TEST TERMINÉ AVEC SUCCÈS!")
-print("="*70)
+print(f"\n✅ Figures individuelles: dossier 'figures_dynamic/'")
+print(f"✅ Analyse complète: 'analyse_complete_dynamic.png'")
+print(f"✅ Données CSV: '{csv_file}'")
+print(f"✅ Animation GIF: 'performance_dynamic.gif'")
